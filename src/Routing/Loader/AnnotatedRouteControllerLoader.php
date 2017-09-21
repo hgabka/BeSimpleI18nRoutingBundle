@@ -7,6 +7,7 @@ use BeSimple\I18nRoutingBundle\Routing\Exception\MissingRouteLocaleException;
 use BeSimple\I18nRoutingBundle\Routing\RouteGenerator\I18nRouteGenerator;
 use BeSimple\I18nRoutingBundle\Routing\RouteGenerator\RouteGeneratorInterface;
 use Doctrine\Common\Annotations\Reader;
+use Symfony\Component\Config\Resource\FileResource;
 use Symfony\Component\Routing\Loader\AnnotationClassLoader;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
@@ -21,12 +22,19 @@ class AnnotatedRouteControllerLoader extends AnnotationClassLoader
      */
     private $routeGenerator;
 
+
+    /**
+     * @var string
+     */
+    protected $parentRouteAnnotationClass = 'Symfony\\Component\\Routing\\Annotation\\Route';
+
     public function __construct(Reader $reader, RouteGeneratorInterface $routeGenerator = null)
     {
         parent::__construct($reader);
 
         $this->routeGenerator = $routeGenerator ?: new I18nRouteGenerator();
         $this->setRouteAnnotationClass('BeSimple\\I18nRoutingBundle\\Routing\\Annotation\\I18nRoute');
+
     }
 
     protected function addRoute(RouteCollection $collection, $annot, $globals, \ReflectionClass $class, \ReflectionMethod $method)
@@ -195,5 +203,51 @@ class AnnotatedRouteControllerLoader extends AnnotationClassLoader
             '\\1',
             '_',
         ), $routeName);
+    }
+
+
+    /**
+     * Loads from annotations from a class.
+     *
+     * @param string      $class A class name
+     * @param string|null $type  The resource type
+     *
+     * @return RouteCollection A RouteCollection instance
+     *
+     * @throws \InvalidArgumentException When route can't be parsed
+     */
+    public function load($class, $type = null)
+    {
+        if (!class_exists($class)) {
+            throw new \InvalidArgumentException(sprintf('Class "%s" does not exist.', $class));
+        }
+
+        $class = new \ReflectionClass($class);
+        if ($class->isAbstract()) {
+            throw new \InvalidArgumentException(sprintf('Annotations from class "%s" cannot be read as it is abstract.', $class->getName()));
+        }
+
+        $globals = $this->getGlobals($class);
+
+        $collection = new RouteCollection();
+        $collection->addResource(new FileResource($class->getFileName()));
+
+        foreach ($class->getMethods() as $method) {
+            $this->defaultRouteIndex = 0;
+            foreach ($this->reader->getMethodAnnotations($method) as $annot) {
+                if ($annot instanceof $this->routeAnnotationClass) {
+                    $this->addRoute($collection, $annot, $globals, $class, $method);
+                } else if ($annot instanceof $this->parentRouteAnnotationClass) {
+                    parent::addRoute($collection, $annot, parent::getGlobals($class), $class, $method);
+                }
+            }
+        }
+
+        if (0 === $collection->count() && $class->hasMethod('__invoke') && $annot = $this->reader->getClassAnnotation($class, $this->routeAnnotationClass)) {
+            $globals['path'] = '';
+            $this->addRoute($collection, $annot, $globals, $class, $class->getMethod('__invoke'));
+        }
+
+        return $collection;
     }
 }
