@@ -31,11 +31,6 @@ class BeSimpleI18nRoutingExtension extends Extension
         $this->configureAttributeTranslator($config, $container, $loader);
         $this->configureRouteNameInflector($config, $container);
         $this->configureAnnotations($config, $container, $loader);
-
-        $this->addClassesToCompile(array(
-            'BeSimple\\I18nRoutingBundle\\Routing\\Router',
-            'BeSimple\\I18nRoutingBundle\\Routing\\RouteGenerator\\NameInflector\\RouteNameInflectorInterface'
-        ));
     }
 
     /**
